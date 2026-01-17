@@ -12,16 +12,64 @@ if not api_key:
 
 # 2. 配置 Gemini
 genai.configure(api_key=api_key)
-# 使用更通用的 gemini-pro 模型，避免 flash 模型有时候不可用的问题
-model = genai.GenerativeModel('gemini-pro')
+
+def get_best_model():
+    """
+    自动寻找当前账号可用的最佳模型
+    优先级: Gemini 1.5 Flash -> Gemini 1.5 Pro -> Gemini Pro -> 任意可用模型
+    """
+    print(">>> [0/3] 正在自动检索可用模型列表...")
+    available_models = []
+    try:
+        for m in genai.list_models():
+            # 必须支持 generateContent 方法的模型才能用来生成文本
+            if 'generateContent' in m.supported_generation_methods:
+                available_models.append(m.name)
+    except Exception as e:
+        print(f"!!! 获取模型列表失败: {e}")
+        return None
+
+    if not available_models:
+        print("!!! 未找到任何可用模型，请检查 API Key 权限")
+        return None
+
+    # 打印一下找到了哪些，方便调试
+    # print(f"可用模型: {available_models}")
+
+    # 优先级匹配逻辑
+    # 1. 优先找 1.5 Flash (最快，最稳)
+    for m in available_models:
+        if 'gemini-1.5-flash' in m:
+            return m
+    
+    # 2. 其次找 1.5 Pro
+    for m in available_models:
+        if 'gemini-1.5-pro' in m:
+            return m
+            
+    # 3. 再其次找老版 Pro
+    for m in available_models:
+        if 'gemini-pro' in m:
+            return m
+
+    # 4. 实在不行，返回列表里的第一个
+    return available_models[0]
+
+# 获取并初始化模型
+model_name = get_best_model()
+if model_name:
+    print(f">>> 成功选中模型: {model_name}")
+    model = genai.GenerativeModel(model_name)
+else:
+    print("!!! 无法初始化模型，程序退出")
+    exit(1)
 
 def get_market_sentiment():
     print(">>> [1/3] 正在抓取上证指数(000001)最新资讯...")
     
     news_text = ""
     try:
-        # 替换为东方财富-个股新闻接口，查询"上证指数"的新闻
-        # 000001 代表上证指数，这里的新闻最能代表大盘
+        # 东方财富-个股新闻接口
         df = ak.stock_news_em(symbol="000001")
         
         # 只取最新的 5 条
@@ -30,10 +78,8 @@ def get_market_sentiment():
         # 拼接新闻标题和内容
         news_list = []
         for index, row in latest_news.iterrows():
-            # 东方财富的列名通常是 '新闻标题' 和 '新闻内容'
             title = row.get('新闻标题', '无标题')
             content = row.get('新闻内容', '无内容')
-            # 稍微清洗一下，去掉过多的换行
             news_item = f"标题：{title}\n内容：{str(content)[:100]}..." 
             news_list.append(news_item)
             
@@ -42,11 +88,6 @@ def get_market_sentiment():
         
     except Exception as e:
         print(f"抓取失败: {e}")
-        # 如果 akshare 报错，我们打印具体的列名以便调试
-        try:
-            print("尝试打印数据列名:", df.columns)
-        except:
-            pass
         return
 
     # 3. 构造 Prompt
