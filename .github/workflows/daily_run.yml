@@ -18,7 +18,7 @@ jobs:
       - name: Set up Python (环境准备)
         uses: actions/setup-python@v4
         with:
-          python-version: '3.9'
+          python-version: '3.11'
 
       - name: Install dependencies (安装库)
         run: |
