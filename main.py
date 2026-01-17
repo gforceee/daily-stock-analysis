@@ -1,9 +1,9 @@
 import os
 import akshare as ak
 import google.generativeai as genai
-import datetime
+import pandas as pd
 
-# 1. 从环境变量获取 Key (由 GitHub Actions 注入)
+# 1. 从环境变量获取 Key
 api_key = os.environ.get("GEMINI_API_KEY")
 
 if not api_key:
@@ -12,33 +12,54 @@ if not api_key:
 
 # 2. 配置 Gemini
 genai.configure(api_key=api_key)
+# 使用更通用的 gemini-pro 模型，避免 flash 模型有时候不可用的问题
 model = genai.GenerativeModel('gemini-pro')
 
 def get_market_sentiment():
-    print(">>> [1/3] 正在抓取财联社-今日电报...")
-    # 获取财联社电报，只取最新的 5 条，避免 token 超标
+    print(">>> [1/3] 正在抓取上证指数(000001)最新资讯...")
+    
+    news_text = ""
     try:
-        df = ak.stock_telegraph_cls()
-        news_list = df.head(5)['内容'].tolist()
+        # 替换为东方财富-个股新闻接口，查询"上证指数"的新闻
+        # 000001 代表上证指数，这里的新闻最能代表大盘
+        df = ak.stock_news_em(symbol="000001")
+        
+        # 只取最新的 5 条
+        latest_news = df.head(5)
+        
+        # 拼接新闻标题和内容
+        news_list = []
+        for index, row in latest_news.iterrows():
+            # 东方财富的列名通常是 '新闻标题' 和 '新闻内容'
+            title = row.get('新闻标题', '无标题')
+            content = row.get('新闻内容', '无内容')
+            # 稍微清洗一下，去掉过多的换行
+            news_item = f"标题：{title}\n内容：{str(content)[:100]}..." 
+            news_list.append(news_item)
+            
         news_text = "\n---\n".join(news_list)
         print(">>> 抓取成功！准备发送给 AI...")
+        
     except Exception as e:
         print(f"抓取失败: {e}")
+        # 如果 akshare 报错，我们打印具体的列名以便调试
+        try:
+            print("尝试打印数据列名:", df.columns)
+        except:
+            pass
         return
 
     # 3. 构造 Prompt
     prompt = f"""
-    你是 A股资深交易员。请根据以下最新的 5 条财经新闻，生成一份简报。
+    你是 A股资深交易员。请根据以下关于“上证指数”的最新 5 条新闻，生成一份简报。
     
     新闻内容：
     {news_text}
     
-    请输出以下格式（JSON）：
-    {{
-        "整体情绪": "恐慌/中性/贪婪",
-        "核心利好板块": ["板块A", "板块B"],
-        "简短点评": "用一句犀利的话总结对明天开盘的影响"
-    }}
+    请输出以下格式（纯文本即可，不要Markdown）：
+    【整体情绪】：（恐慌/中性/贪婪）
+    【核心板块】：（列出1-2个利好方向）
+    【犀利点评】：（用一句简短的话总结对明天开盘的影响）
     """
 
     # 4. 调用 Gemini
