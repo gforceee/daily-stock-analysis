@@ -2,30 +2,41 @@ name: A股每日早报
 
 on:
   schedule:
-    # UTC 时间 00:30 等于 北京时间 08:30
     - cron: '30 0 * * *'
-  # 允许手动点击按钮触发测试
   workflow_dispatch:
+
+# 必须添加这部分权限设置
+permissions:
+  contents: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code (拉取代码)
+      - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Set up Python (环境准备)
+      - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
 
-      - name: Install dependencies (安装库)
+      - name: Install dependencies
         run: |
           pip install -r requirements.txt
 
-      - name: Run Analysis (运行脚本)
+      - name: Run Analysis (生成 RSS)
         env:
-          # 把刚才配置的 Secret 注入给 Python 脚本
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python main.py
+
+      # 新增步骤：把生成的 rss.xml 提交回仓库
+      - name: Commit and Push RSS
+        run: |
+          git config --global user.name 'GitHub Actions'
+          git config --global user.email 'actions@github.com'
+          git add rss.xml
+          # 如果有变动才提交，没变动就不报错
+          git commit -m "Update RSS feed" || exit 0
+          git push
