@@ -11,7 +11,7 @@ if not api_key:
 
 genai.configure(api_key=api_key)
 
-# 2. 模型选择逻辑 (保留之前成功的版本)
+# 2. 模型选择逻辑
 def get_flash_model():
     print(">>> [0/3] 正在搜索可用的 Flash 模型...")
     try:
@@ -20,7 +20,6 @@ def get_flash_model():
                 if 'flash' in m.name.lower():
                     print(f">>> 找到目标: {m.name}")
                     return m.name
-        # 降级方案
         print(">>> 警告: 没找到 Flash，尝试 Pro...")
         for m in genai.list_models():
              if 'generateContent' in m.supported_generation_methods:
@@ -28,7 +27,7 @@ def get_flash_model():
                      return m.name
     except Exception as e:
         print(f"!!! 模型搜索失败: {e}")
-        return 'models/gemini-pro' # 最后的保底
+        return 'models/gemini-pro'
     return 'models/gemini-pro'
 
 # 初始化模型
@@ -41,7 +40,7 @@ def get_market_sentiment():
     news_text = ""
     try:
         df = ak.stock_news_em(symbol="000001")
-        latest_news = df.head(5) # 取最新的5条
+        latest_news = df.head(5)
         
         news_list = []
         for index, row in latest_news.iterrows():
@@ -58,8 +57,33 @@ def get_market_sentiment():
         return
 
     # =====================================================
-    # 【核心优化区】：这里修改了 Prompt，要求 AI 说人话
+    # 注意：下面这个 prompt 必须用三个引号结尾，千万别漏了
     # =====================================================
     prompt = f"""
     你是A股资深交易员，擅长【右侧趋势交易】，风格犀利直接。
-    请阅读以下关于“上
+    请阅读以下关于“上证指数”的最新 5 条新闻，忽略套话，直击核心。
+    
+    新闻内容：
+    {news_text}
+    
+    请严格按照以下格式输出（不要Markdown，直接纯文本）：
+    
+    【市场温度】：(请打分，0-100分。0是极度冰点，50是震荡，80以上是过热)
+    【持仓建议】：(针对持有权重股的人：继续躺赢 / 逢高减仓 / 止损离场？选一个)
+    【空仓建议】：(针对想进场的人：立即买入 / 回调低吸 / 观望勿动？选一个)
+    【核心理由】：(用最直白的大白话解释为什么，不要超过50个字)
+    """
+
+    print(">>> [2/3] AI 正在分析中...")
+    try:
+        response = model.generate_content(prompt)
+        print("\n" + "="*30)
+        print(">>> [3/3] 优化后的分析报告：")
+        print("="*30)
+        print(response.text)
+        print("="*30)
+    except Exception as e:
+        print(f"AI 调用报错: {e}")
+
+if __name__ == "__main__":
+    get_market_sentiment()
